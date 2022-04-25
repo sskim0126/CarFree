@@ -1,8 +1,5 @@
-#!/usr/bin/env python
-
 """
 An example of client-side bounding boxes with basic car controls.
-
 Controls:
 Welcome to CARLA for Getting Bounding Box Data.
 Use WASD keys for control.
@@ -14,7 +11,6 @@ Use WASD keys for control.
     C            : Capture Data
     l            : Loop Capture Start
     L            : Loop Capture End
-
     ESC          : quit
 """
 
@@ -27,8 +23,16 @@ import glob
 import os
 import sys
 
+# try:
+#     sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
+#         sys.version_info.major,
+#         sys.version_info.minor,
+#         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
+# except IndexError:
+#     pass
+
 try:
-    sys.path.append(glob.glob('../carla/dist/carla-*%d.%d-%s.egg' % (
+    sys.path.append(glob.glob('/opt/carla-simulator/PythonAPI/carla/dist/carla-0.9.11-py{}.{}-{}.egg'.format(
         sys.version_info.major,
         sys.version_info.minor,
         'win-amd64' if os.name == 'nt' else 'linux-x86_64'))[0])
@@ -260,14 +264,14 @@ class VehicleBoundingBoxes(object):
         """
         Creates 3D bounding boxes based on carla vehicle list and camera.
         """
+        bounding_boxes = [VehicleBoundingBoxes.get_bounding_box(vehicle, camera) for vehicle in vehicles]   
 
-        bounding_boxes = [VehicleBoundingBoxes.get_bounding_box(vehicle, camera) for vehicle in vehicles]
         # filter objects behind camera
         bounding_boxes = [bb for bb in bounding_boxes if all(bb[:, 2] > 0)]
         return bounding_boxes
 
     @staticmethod
-    def draw_bounding_boxes(display, bounding_boxes):
+    def draw_bounding_boxes(display, bounding_boxes, vehicles):
         """
         Draws bounding boxes on pygame display.
         """
@@ -280,11 +284,15 @@ class VehicleBoundingBoxes(object):
         if vehicle_bbox_record == True:
             f = open("VehicleBBox/bbox"+str(count), 'w')
             print("VehicleBoundingBox")
-        for bbox in bounding_boxes:
+        for idx, bbox in enumerate(bounding_boxes):
             points = [(int(bbox[i, 0]), int(bbox[i, 1])) for i in range(8)]
+            wheel_nums = int(vehicles[idx].attributes['number_of_wheels'])
+            if wheel_nums == 4:
+                label = '1'
+            else: label = '0'
 
             if vehicle_bbox_record == True:
-                f.write(str(points)+"\n")
+                f.write(str(points)+'\t'+label+"\n")
         
         if vehicle_bbox_record == True:
             f.close()
@@ -577,7 +585,8 @@ class BasicSynchronousClient(object):
             pygame.init()
 
             self.client = carla.Client('127.0.0.1', 2000)
-            self.client.set_timeout(2.0)
+            self.client.set_timeout(200.0)
+            # self.world = self.client.load_world('/Game/Package19/Maps/Map19/Map19')
             self.world = self.client.get_world()
 
             self.setup_car()
@@ -598,8 +607,9 @@ class BasicSynchronousClient(object):
             global pedestrian_bbox_record
             global count
 
+
             while True:
-                self.world.tick()
+                # self.world.tick()
 
                 self.capture = True
                 pygame_clock.tick_busy_loop(60)
@@ -626,14 +636,19 @@ class BasicSynchronousClient(object):
                     count = self.image_count
                     print("-------------------------------------------------")
                     print("Captured! ImageCount - %d" %self.image_count)
+                    
+                self.world.tick()
 
                 bounding_boxes = VehicleBoundingBoxes.get_bounding_boxes(vehicles, self.camera)
                 pedestrian_bounding_boxes = PedestrianBoundingBoxes.get_bounding_boxes(pedestrians, self.camera)
 
-                VehicleBoundingBoxes.draw_bounding_boxes(self.display, bounding_boxes)
+                VehicleBoundingBoxes.draw_bounding_boxes(self.display, bounding_boxes, vehicles)
                 PedestrianBoundingBoxes.draw_bounding_boxes(self.display, pedestrian_bounding_boxes)
                 
                 time.sleep(0.03)
+
+                # self.world.tick()
+
                 self.rgb_record = False
                 self.seg_record = False
                 pygame.display.flip()
@@ -668,9 +683,9 @@ def main():
         help='set Capture Cycle settings, Recommand : above 100')
 
     args = argparser.parse_args()
-
+    
     print(__doc__)
-
+    
     try:
         client = BasicSynchronousClient()
         client.game_loop(args)
