@@ -264,14 +264,16 @@ class VehicleBoundingBoxes(object):
         """
         Creates 3D bounding boxes based on carla vehicle list and camera.
         """
-        bounding_boxes = [VehicleBoundingBoxes.get_bounding_box(vehicle, camera) for vehicle in vehicles]   
+        bounding_boxes = [(VehicleBoundingBoxes.get_bounding_box(vehicle, camera)[0],VehicleBoundingBoxes.get_bounding_box(vehicle, camera)[1])\
+             for vehicle in vehicles]
+        
 
         # filter objects behind camera
-        bounding_boxes = [bb for bb in bounding_boxes if all(bb[:, 2] > 0)]
+        bounding_boxes = [bb for bb in bounding_boxes if all(bb[0][:, 2] > 0)]
         return bounding_boxes
 
     @staticmethod
-    def draw_bounding_boxes(display, bounding_boxes, vehicles):
+    def draw_bounding_boxes(display, bounding_boxes):
         """
         Draws bounding boxes on pygame display.
         """
@@ -285,14 +287,28 @@ class VehicleBoundingBoxes(object):
             f = open("VehicleBBox/bbox"+str(count), 'w')
             print("VehicleBoundingBox")
         for idx, bbox in enumerate(bounding_boxes):
-            points = [(int(bbox[i, 0]), int(bbox[i, 1])) for i in range(8)]
-            wheel_nums = int(vehicles[idx].attributes['number_of_wheels'])
-            if wheel_nums == 4:
-                label = '1'
-            else: label = '0'
+            points = [(int(bbox[0][i, 0]), int(bbox[0][i, 1])) for i in range(8)]
+            # wheel_nums = int(vehicles[idx].attributes['number_of_wheels'])
+            # if wheel_nums == 4:
+            #     label = '1'
+            # else: label = '0'
+            vehicle_type = bbox[1]
+
+            if 'carlacola' in vehicle_type or 'cybertruck' in vehicle_type: # truck
+                vehicle_type_id = 1
+            
+            elif 'gazelle.omafiets' in vehicle_type or 'bh.crossbike' in vehicle_type or 'diamondback.century' in vehicle_type: # bicycle
+                vehicle_type_id = 2
+
+            elif 'yamaha.yzf' in vehicle_type or 'kawasaki.ninja' in vehicle_type or 'harley-davidson.low_rider' in vehicle_type: # motorcycle
+                vehicle_type_id = 3
+
+            else: # car
+                vehicle_type_id = 0
 
             if vehicle_bbox_record == True:
-                f.write(str(points)+'\t'+label+"\n")
+                f.write(str(points)+'\t'+str(vehicle_type_id)+"\n")
+                # f.write(str(points)+"\n")
         
         if vehicle_bbox_record == True:
             f.close()
@@ -307,20 +323,20 @@ class VehicleBoundingBoxes(object):
         """
         Returns 3D bounding box for a vehicle based on camera view.
         """
-
-        bb_cords = VehicleBoundingBoxes._create_bb_points(vehicle)
+        
+        bb_cords, vehicle_type = VehicleBoundingBoxes._create_bb_points(vehicle)
         cords_x_y_z = VehicleBoundingBoxes._vehicle_to_sensor(bb_cords, vehicle, camera)[:3, :]
         cords_y_minus_z_x = np.concatenate([cords_x_y_z[1, :], -cords_x_y_z[2, :], cords_x_y_z[0, :]])
         bbox = np.transpose(np.dot(camera.calibration, cords_y_minus_z_x))
         camera_bbox = np.concatenate([bbox[:, 0] / bbox[:, 2], bbox[:, 1] / bbox[:, 2], bbox[:, 2]], axis=1)
-        return camera_bbox
+        return camera_bbox, vehicle_type
 
     @staticmethod
     def _create_bb_points(vehicle):
         """
         Returns 3D bounding box for a vehicle.
         """
-
+        # print(vehicle.attributes['number_of_wheels'])
         cords = np.zeros((8, 4))
         extent = vehicle.bounding_box.extent
         cords[0, :] = np.array([extent.x, extent.y, -extent.z, 1])
@@ -331,7 +347,10 @@ class VehicleBoundingBoxes(object):
         cords[5, :] = np.array([-extent.x, extent.y, extent.z, 1])
         cords[6, :] = np.array([-extent.x, -extent.y, extent.z, 1])
         cords[7, :] = np.array([extent.x, -extent.y, extent.z, 1])
-        return cords
+        vehicle_type = vehicle.type_id
+        # print(vehicle_type)
+        # exit(True)
+        return cords, vehicle_type 
 
     @staticmethod
     def _vehicle_to_sensor(cords, vehicle, sensor):
@@ -346,7 +365,7 @@ class VehicleBoundingBoxes(object):
     @staticmethod
     def _vehicle_to_world(cords, vehicle):
         """
-        Transforms coordinates of a vehicle bounding box to world.
+        Transforms coordinates of a vehicle bounding box to worldd.
         """
 
         bb_transform = carla.Transform(vehicle.bounding_box.location)
@@ -597,6 +616,9 @@ class BasicSynchronousClient(object):
 
             self.set_synchronous_mode(True)
             vehicles = self.world.get_actors().filter('vehicle.*')
+            # print(vehicles)
+            # print(dir(vehicles))
+            # exit(True)
             pedestrians = self.world.get_actors().filter('walker.pedestrian.*')
 
 
@@ -612,10 +634,10 @@ class BasicSynchronousClient(object):
                 # self.world.tick()
 
                 self.capture = True
-                pygame_clock.tick_busy_loop(60)
+                # pygame_clock.tick_busy_loop(60)
 
                 self.render(self.display)
-
+                
                 self.time_interval += 1
                 if ((self.time_interval % args.CaptureLoop) == 0 and self.loop_state):
                     self.image_count = self.image_count + 1 
@@ -642,9 +664,10 @@ class BasicSynchronousClient(object):
                 bounding_boxes = VehicleBoundingBoxes.get_bounding_boxes(vehicles, self.camera)
                 pedestrian_bounding_boxes = PedestrianBoundingBoxes.get_bounding_boxes(pedestrians, self.camera)
 
-                VehicleBoundingBoxes.draw_bounding_boxes(self.display, bounding_boxes, vehicles)
+                VehicleBoundingBoxes.draw_bounding_boxes(self.display, bounding_boxes)
                 PedestrianBoundingBoxes.draw_bounding_boxes(self.display, pedestrian_bounding_boxes)
-                
+
+
                 time.sleep(0.03)
 
                 # self.world.tick()
